@@ -1,0 +1,10 @@
+# Off-box monosans config — output to proxies/
+[output]
+path = "./proxies"
+format = "txt"
+[output.txt]
+enabled = true
+[output.json]
+enabled = false
+[checking]
+url = "http://api.ipify.org"

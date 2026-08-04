@@ -1,0 +1,55 @@
+# proxy-feed.yml — Off-box proxy scraping + verification (monosans).
+# Runs on GitHub's servers every 30 minutes, commits verified proxy lists.
+# Our laptop pulls the fresh lists — no laptop CPU/RAM/IP usage.
+#
+# Install: place in .github/workflows/ of the proxy-feed repo.
+name: proxy-feed
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # every 30 min
+  workflow_dispatch:          # manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch monosans checker (nightly binary)
+        run: |
+          # Binaries come from nightly CI artifacts (no GitHub releases) — verified name
+          curl -sL "https://nightly.link/monosans/proxy-scraper-checker/workflows/ci/main/proxy-scraper-checker-binary-x86_64-unknown-linux-gnu.zip" -o checker.zip
+          ls -la checker.zip || (echo "Download failed"; exit 1)
+          unzip -o checker.zip
+          chmod +x proxy-scraper-checker*
+
+      - name: Run checker
+        run: |
+          mkdir -p out
+          # The binary reads config.toml from cwd; default output to ./out
+          ./proxy-scraper-checker* --output out 2>/dev/null || ./proxy-scraper-checker* 2>/dev/null || ls -la
+
+      - name: Commit verified lists
+        run: |
+          mkdir -p proxies
+          # Copy any output files (http.txt, socks4.txt, socks5.txt, all.txt)
+          for f in out/*.txt; do
+            [ -f "$f" ] && cp "$f" proxies/ 2>/dev/null || true
+          done
+          # Fallback: if checker output differs, preserve previous run
+          if [ ! -f proxies/http.txt ] && [ -f http.txt ]; then cp http.txt proxies/; fi
+          git config user.name "proxy-feed-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A proxies/ 2>/dev/null || git add -A .
+          if git diff --cached --quiet; then
+            echo "No changes — proxy lists unchanged"
+          else
+            git commit -m "Update verified proxies $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push
+          fi
