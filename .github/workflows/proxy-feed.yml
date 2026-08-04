@@ -31,9 +31,13 @@ jobs:
 
       - name: Run checker
         run: |
-          mkdir -p out
-          # The binary reads config.toml from cwd; default output to ./out
-          ./proxy-scraper-checker* --output out 2>/dev/null || ./proxy-scraper-checker* 2>/dev/null || ls -la
+          # Binary reads config.toml from cwd (sets output to ./proxies).
+          # NO extra flags — the binary is TUI-only and exits non-zero on
+          # unknown flags. Run with a timeout guard.
+          mkdir -p proxies
+          timeout 600 ./proxy-scraper-checker* > checker.log 2>&1 || echo "checker exit $? (see log)"
+          tail -20 checker.log
+          ls -la proxies/ 2>/dev/null || echo "no proxies output"
 
       - name: Commit verified lists
         run: |
